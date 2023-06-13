@@ -1,3 +1,76 @@
+# About Semantic Instant NeRF
+It's an imlplemntation of combining extended NeRF model from
+- [In-Place Scene Labelling and Understanding with Implicit Scene Representation](https://arxiv.org/abs/2103.15875)
+- [Instant Neural Graphics Primitives with a Multiresolution Hash Encoding](https://arxiv.org/abs/2201.05989)
+
+# Preprocess
+Please refer to dataset from [Instant Neural Graphics Primitives with a Multiresolution Hash Encoding](https://arxiv.org/abs/2201.05989).
+In the transforms.json you need to add semantic_path for each frame, also add "semantic_info": {"class_names":[...], "class_color":[...]}.
+The .json should like
+```json
+{
+    "fl_x": 320.00000000000006,
+    "fl_y": 320.00000000000006,
+    "k1": 0.000971998,
+    "k2": -0.000681924,
+    "p1": 0.000148465,
+    "p2": -0.000304312,
+    "cx": 320,
+    "cy": 240,
+    "w": 640,
+    "h": 480,
+    "aabb_scale": 2,
+    "frames": [
+        {
+            "file_path": "rgb/rgb_0.png",
+            "depth_path": "depth/depth_0.png",
+            "semantic_path": "semantic_class/semantic_class_0.png"
+            "transform_matrix": [
+                [
+                    -0.38373310475743544,
+                    0.05730035133603264,
+                    0.9216645669927787,
+                    -1.2555224584619138
+                ],
+                [
+                    -0.9234440450364164,
+                    -0.023810908565662536,
+                    -0.38299365049574724,
+                    1.1522511555545825
+                ],
+                [
+                    0,
+                    -0.998072998517666,
+                    0.062050702090750906,
+                    -0.3069670510780558
+                ],
+                [
+                    0,
+                    0,
+                    0,
+                    1
+                ]
+            ],
+        },
+    ],
+    "semantic_info": {
+        "class_names": [
+            "table",
+            "wall
+        ],
+        "class_colors":[
+            [0, 0, 0],
+            [255, 255, 255]
+        ]
+    }
+}
+```
+
+# Training
+```bash
+ns-train semantic-instant-ngp --data to/data/path
+```
+
 <p align="center">
     <!-- community badges -->
     <a href="https://discord.gg/uMbNqcraFc"><img src="https://img.shields.io/badge/Join-Discord-blue.svg"/></a>
