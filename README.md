@@ -56,7 +56,7 @@ The .json should like
     "semantic_info": {
         "class_names": [
             "table",
-            "wall
+            "wall"
         ],
         "class_colors":[
             [0, 0, 0],
