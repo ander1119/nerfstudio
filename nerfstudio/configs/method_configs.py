@@ -42,6 +42,8 @@ from nerfstudio.data.dataparsers.phototourism_dataparser import (
 )
 from nerfstudio.data.dataparsers.sdfstudio_dataparser import SDFStudioDataParserConfig
 from nerfstudio.data.dataparsers.sitcoms3d_dataparser import Sitcoms3DDataParserConfig
+from nerfstudio.data.dataparsers.semerf_dataparser import SemerfDataParserConfig
+
 from nerfstudio.data.datasets.depth_dataset import DepthDataset
 from nerfstudio.data.datasets.sdf_dataset import SDFDataset
 from nerfstudio.data.datasets.semantic_dataset import SemanticDataset
@@ -65,12 +67,16 @@ from nerfstudio.models.neus_facto import NeuSFactoModelConfig
 from nerfstudio.models.semantic_nerfw import SemanticNerfWModelConfig
 from nerfstudio.models.tensorf import TensoRFModelConfig
 from nerfstudio.models.vanilla_nerf import NeRFModel, VanillaModelConfig
+from nerfstudio.models.semerf import SemerfModelConfig
+from nerfstudio.models.semantic_instant_ngp import SemanticInstantNGPModelConfig
+
 from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
 from nerfstudio.pipelines.dynamic_batch import DynamicBatchPipelineConfig
 from nerfstudio.plugins.registry import discover_methods
 
 method_configs: Dict[str, TrainerConfig] = {}
 descriptions = {
+    "semantic-instant-ngp": "semantic nerf with replica",
     "nerfacto": "Recommended real-time model tuned for real captures. This model will be continually updated.",
     "depth-nerfacto": "Nerfacto with depth supervision.",
     "volinga": "Real-time rendering model from Volinga. Directly exportable to NVOL format at https://volinga.ai/",
@@ -87,6 +93,65 @@ descriptions = {
     "neus": "Implementation of NeuS. (slow)",
     "neus-facto": "Implementation of NeuS-Facto. (slow)",
 }
+
+method_configs["semantic-instant-ngp"] = TrainerConfig(
+    method_name="semantic-instant-ngp",
+    steps_per_eval_batch=1000,
+    steps_per_save=10000,
+    max_num_iterations=30000,
+    mixed_precision=True,
+    pipeline=DynamicBatchPipelineConfig(
+        datamanager=VanillaDataManagerConfig(
+            _target=VanillaDataManager[SemanticDataset],
+            dataparser=SemerfDataParserConfig(),
+            train_num_rays_per_batch=4096,
+            eval_num_rays_per_batch=4096,
+        ),
+        model=SemanticInstantNGPModelConfig(
+            eval_num_rays_per_chunk=4096,
+            semantic_loss_weight=1,
+            pass_semantic_gradients=True,
+            ),
+    ),
+    optimizers={
+        "fields": {
+            "optimizer": AdamOptimizerConfig(lr=5e-3, eps=1e-15),
+            "scheduler": ExponentialDecaySchedulerConfig(lr_final=0.0001, max_steps=200000),
+        }
+    },
+    viewer=ViewerConfig(num_rays_per_chunk=1 << 12),
+    vis="viewer",
+)
+
+method_configs["semerf"] = TrainerConfig(
+    method_name="semerf",
+    steps_per_eval_batch=5000,
+    steps_per_save=10000,
+    max_num_iterations=200000,
+    mixed_precision=True,
+    pipeline=VanillaPipelineConfig(
+        datamanager=VanillaDataManagerConfig(
+            eval_num_images_to_sample_from=100,
+            _target=VanillaDataManager[SemanticDataset],
+            dataparser=SemerfDataParserConfig(),
+            train_num_rays_per_batch=1024,
+            eval_num_rays_per_batch=1024,
+        ),
+        model=SemerfModelConfig(eval_num_rays_per_chunk=1 << 12),
+    ),
+    optimizers={
+        "fine_fields": {
+            "optimizer": AdamOptimizerConfig(lr=5e-4),
+            "scheduler": None,
+        },
+        "coarse_fields": {
+            "optimizer": AdamOptimizerConfig(lr=5e-4),
+            "scheduler": None,
+        },
+    },
+    viewer=ViewerConfig(num_rays_per_chunk=1 << 12),
+    vis="viewer",
+)
 
 method_configs["nerfacto"] = TrainerConfig(
     method_name="nerfacto",

@@ -42,6 +42,8 @@ from nerfstudio.utils.math import components_from_spherical_harmonics, safe_norm
 BackgroundColor = Union[Literal["random", "last_sample", "black", "white"], Float[Tensor, "3"]]
 BACKGROUND_COLOR_OVERRIDE: Optional[Float[Tensor, "3"]] = None
 
+BackgroundLogit = Union[Literal["random", "last_sample"], Float[Tensor, "number of semantic class"]]
+
 
 @contextlib.contextmanager
 def background_color_override_context(mode: Float[Tensor, "3"]) -> Generator[None, None, None]:
@@ -317,18 +319,106 @@ class UncertaintyRenderer(nn.Module):
         return uncertainty
 
 
+# class SemanticRenderer(nn.Module):
+#     """Calculate semantics along the ray."""
+
+#     @classmethod
+#     def forward(
+#         cls,
+#         semantics: Float[Tensor, "*bs num_samples num_classes"],
+#         weights: Float[Tensor, "*bs num_samples 1"],
+#     ) -> Float[Tensor, "*bs num_classes"]:
+#         """Calculate semantics along the ray."""
+#         sem = torch.sum(weights * semantics, dim=-2)
+#         return sem
+
 class SemanticRenderer(nn.Module):
-    """Calculate semantics along the ray."""
+    """Standard volumetric rendering.
+
+    Args:
+        background_logit: Background logit as semantics. Uses random logits if None.
+    """
+
+    def __init__(self, background_logit: BackgroundLogit = "random") -> None:
+        super().__init__()
+        self.background_logit: BackgroundLogit = background_logit
 
     @classmethod
-    def forward(
+    def combine_semantics(
         cls,
         semantics: Float[Tensor, "*bs num_samples num_classes"],
         weights: Float[Tensor, "*bs num_samples 1"],
+        background_logit: BackgroundLogit = "random",
+        ray_indices: Optional[Int[Tensor, "num_samples"]] = None,
+        num_rays: Optional[int] = None,
     ) -> Float[Tensor, "*bs num_classes"]:
-        """Calculate semantics along the ray."""
-        sem = torch.sum(weights * semantics, dim=-2)
-        return sem
+        """Composite samples along ray and render semantics
+
+        Args:
+            semantics: semantics for each sample
+            weights: Weights for each sample
+            background_logit: Background logit as semantics.
+            ray_indices: Ray index for each sample, used when samples are packed.
+            num_rays: Number of rays, used when samples are packed.
+
+        Returns:
+            Outputs semantics values.
+        """
+        if ray_indices is not None and num_rays is not None:
+            # Necessary for packed samples from volumetric ray sampler
+            if background_logit == "last_sample":
+                raise NotImplementedError("Background logit 'last_sample' not implemented for packed samples.")
+            comp_semantics = nerfacc.accumulate_along_rays(
+                weights[..., 0], values=semantics, ray_indices=ray_indices, n_rays=num_rays
+            )
+            accumulated_weight = nerfacc.accumulate_along_rays(
+                weights[..., 0], values=None, ray_indices=ray_indices, n_rays=num_rays
+            )
+        else:
+            comp_semantics = torch.sum(weights * semantics, dim=-2)
+            accumulated_weight = torch.sum(weights, dim=-2)
+
+        # if BACKGROUND_COLOR_OVERRIDE is not None:
+        #     background_color = BACKGROUND_COLOR_OVERRIDE
+        if background_logit == "last_sample":
+            background_logit = semantics[..., -1, :]
+        if background_logit == "random":
+            background_logit = torch.rand_like(comp_semantics).to(semantics.device)
+        # if isinstance(background_color, str) and background_color in colors.COLORS_DICT:
+        #     background_color = colors.COLORS_DICT[background_color].to(semantics.device)
+
+        assert isinstance(background_logit, torch.Tensor)
+        comp_semantics = comp_semantics + background_logit.to(weights.device) * (1.0 - accumulated_weight)
+
+        return comp_semantics
+
+    def forward(
+        self,
+        semantics: Float[Tensor, "*bs num_samples number_classes"],
+        weights: Float[Tensor, "*bs num_samples 1"],
+        ray_indices: Optional[Int[Tensor, "num_samples"]] = None,
+        num_rays: Optional[int] = None,
+    ) -> Float[Tensor, "*bs 3"]:
+        """Composite samples along ray and render semantics
+
+        Args:
+            semantics: semantics for each sample
+            weights: Weights for each sample
+            ray_indices: Ray index for each sample, used when samples are packed.
+            num_rays: Number of rays, used when samples are packed.
+
+        Returns:
+            Outputs of semantic logits.
+        """
+
+        if not self.training:
+            semantics = torch.nan_to_num(semantics)
+        semantics = self.combine_semantics(
+            semantics, weights, background_logit=self.background_logit, ray_indices=ray_indices, num_rays=num_rays
+        )
+        # if not self.training:
+        #     torch.clamp_(semantics, min=0.0, max=1.0)
+        return semantics
 
 
 class NormalsRenderer(nn.Module):

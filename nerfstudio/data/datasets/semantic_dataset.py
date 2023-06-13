@@ -49,3 +49,4 @@ class SemanticDataset(InputDataset):
         if "mask" in data.keys():
             mask = mask & data["mask"]
         return {"mask": mask, "semantics": semantic_label}
+        # return {"semantics": semantic_label}

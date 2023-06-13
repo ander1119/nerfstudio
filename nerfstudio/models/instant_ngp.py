@@ -104,16 +104,16 @@ class NGPModel(Model):
         super().populate_modules()
 
         if self.config.disable_scene_contraction:
-            scene_contraction = None
+            self.scene_contraction = None
         else:
-            scene_contraction = SceneContraction(order=float("inf"))
+            self.scene_contraction = SceneContraction(order=float("inf"))
 
         self.field = TCNNNerfactoField(
             aabb=self.scene_box.aabb,
             num_images=self.num_train_data,
             log2_hashmap_size=self.config.log2_hashmap_size,
             max_res=self.config.max_res,
-            spatial_distortion=scene_contraction,
+            spatial_distortion=self.scene_contraction,
         )
 
         self.scene_aabb = Parameter(self.scene_box.aabb.flatten(), requires_grad=False)
